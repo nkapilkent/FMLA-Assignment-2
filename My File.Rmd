@@ -1,0 +1,240 @@
+---
+title: 'Assignment 2 '
+author: "Neetika Kapil"
+date: "2026-02-19"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r}
+#Read the Data
+Bank <- read.csv("UniversalBank-1.csv")
+
+library(caret)
+
+```
+```{r}
+library(class)
+library(dplyr)
+
+## 
+## Attaching package: 'dplyr'
+## The following objects are masked from 'package:stats':
+## 
+##     filter, lag
+## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union
+
+```
+
+
+```{r}
+# Load libraries
+library(caret)
+library(class)
+
+
+# Load the dataset
+Bank_final <- read.csv("UniversalBank-1.csv")
+head(Bank_final)
+```
+#Removing ID and ZIP Code
+
+```{r}
+Bank <- Bank[, !(names(Bank) %in% c("ID", "ZIP.Code"))]
+```
+
+#Converting Education to dummy variables
+```{r}
+Bank$Education <- factor(Bank$Education)
+```
+
+#Creating dummy variable (as Education has 3 Categories )
+```{r}
+dummy <- dummyVars(Personal.Loan ~ ., data = Bank)
+Bank_dum <- data.frame(predict(dummy, newdata = Bank))
+
+```
+
+#Variable tagging
+
+```{r}
+Bank_dum$Personal.Loan <- Bank$Personal.Loan
+```
+
+#Split the data into 60% for Training and 40% for Validation
+```{r}
+set.seed(123)
+
+train_index <- createDataPartition(Bank_final$Personal.Loan,
+                         p=0.6,
+                         list = FALSE)
+train <- Bank_final[train_index, ]
+validation <- Bank_final[-train_index, ]
+
+```
+
+#Scaling predictors for k-NN by using training mean and sd
+
+
+```{r}
+predictors <- Bank_dum %>% select(-Personal.Loan)
+predictors_scaled <- scale(predictors)
+
+
+Bank_final <- data.frame(predictors_scaled,
+                         Personal.Loan = Bank_dum$Personal.Loan)
+
+```
+
+#1.Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, SecuriƟes Account = 0, CD Account = 0, Online = 1, and Credit Card = 1. Perform a k-NN classificaƟon with all predictors except ID and ZIP code using k = 1. Remember to transform categorical predictors with more than two categories into dummy variables first. Specify the success class as 1 (loan acceptance), and use the default cutoff value of 0.5. How would this customer be classified?
+
+
+```{r}
+Customer <- data.frame(
+ Age = 40,
+  Experience = 10,
+  Income = 84,
+  Family = 2,
+  CCAvg = 2,
+  Mortgage = 0,
+  Securities.Account = 0,
+  CD.Account = 0,
+  Online = 1,
+  CreditCard = 1,
+  Education.1 = 0,
+  Education.2 = 1,
+  Education.3 = 0
+)
+
+```
+#Scaling
+```{r}
+Customer_scaled <- scale(Customer,
+                         center = attr(predictors_scaled, "scaled:center"),
+                         scale = attr(predictors_scaled, "scaled:scale")
+                         )
+
+#Run k-NN
+knn <- knn(train = train[, -ncol(train)],
+           test = Customer_scaled,
+           cl = train$Personal.Loan,
+           k = 1)
+knn
+
+```
+#1 = Loan Accepted customer
+#0 = Loan Rejected customer 
+
+Since the value of k is 1 the customer will be classified as 0 so in this case the customer will reject the loan.
+
+
+#2. What is a choice of k that balances between overfiƫng and ignoring the predictor information?
+
+```{r}
+k_values <- seq(1, 4, 26)
+accuracy <- c()
+
+for (k in k_values) {
+  pred <- knn(train[, -ncol(train)],
+              validation[, -ncol(validation)],
+              train$Personal.Loan,
+              k = k)
+  accuracy <- c(accuracy,
+                mean(pred == validation$Personal.Loan))
+}
+results <- data.frame(k = k_values, accuracy = accuracy)
+results
+```
+```{r}
+best_k <- results$k[which.max(results$accuracy)]
+best_k
+
+```
+
+#The medium value of k is considered as it balances the overfitting and underfitting. The optimal k is the best_k based on the accuracy of Validation.
+
+#3 Show the confusion matrix for the validation data that results from using the best k.
+
+```{r}
+best_pred <- knn(train[, -ncol(train)],
+                 validation[, -ncol(validation)],
+                 train$Personal.Loan,
+                 k = best_k)
+
+confusionMatrix(as.factor(best_pred),
+as.factor(validation$Personal.Loan),
+                positive = "1")
+
+```
+#4. Consider the following customer: Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, EducaƟon_1 = 0, EducaƟon_2 = 1, EducaƟon_3 = 0, Mortgage = 0, SecuriƟes Account = 0, CD Account = 0, Online = 1 and Credit Card = 1. Classify the customer using the best k.
+
+```{r}
+Bestknn <- knn(train[, -ncol(train)],
+               Customer_scaled,
+               train$Personal.Loan,
+               k = best_k)
+
+Bestknn
+
+```
+#Since the Best knn is 0, the customer classifies as the not accepted loan.
+
+#5.Repartition the data, this time into training, validation, and test sets (50% : 30% : 20%). Apply the k-NN method with the k chosen above. Compare the confusion matrix of the test set with that of the training and validation sets. Comment on the differences and their reason.
+
+```{r}
+
+set.seed(123)
+
+train_index <- createDataPartition(Bank_final$Personal.Loan,
+                                   p = 0.5,
+                                   list = FALSE)
+train <- Bank_final[train_index, ]
+temp <- Bank_final[-train_index, ]
+
+validation_index <- createDataPartition(temp$Personal.Loan,
+                                        p = 0.6,
+                                        list = FALSE)
+validation <- temp[validation_index, ]
+test <- temp[-validation_index, ]
+
+```
+
+#Applying k-NN
+
+```{r}
+train_pred <- knn(train[, -ncol(train)],
+                  train[, -ncol(train)],
+                  train$Personal.Loan,
+                  k = best_k)
+
+val_pred <- knn(train[, -ncol(train)],
+                validation[, -ncol(validation)],
+                train$Personal.Loan,
+                k = best_k)
+
+test_pred <- knn(train[, -ncol(train)],
+                 test[, -ncol(test)],
+                 train$Personal.Loan,
+                 k = best_k)
+
+```
+
+#Applying Confusion Matrix.
+
+```{r}
+confusionMatrix(as.factor(train_pred), as.factor(train$Personal.Loan))
+```
+```{r}
+confusionMatrix(as.factor(val_pred), as.factor(validation$Personal.Loan))
+```
+```{r}
+confusionMatrix(as.factor(test_pred), as.factor(test$Personal.Loan))
+```
+The confusion matrix of the test set with that of the training and validation sets has shown that validation and test there is lower accuracy because of the unseen or hidden data and for testing it shows 100% accuracy as the model was already tested on the data.
+So summarizing Training set is more accurate compared to the validation and test sets.
+
